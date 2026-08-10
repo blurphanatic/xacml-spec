@@ -1,0 +1,48 @@
+# Fork-local publication-assurance gate for the issue-111-pdf-fonts branch.
+#
+# Runs the OASIS publication acceptance criteria (oasis-pub-check, 169 checks /
+# 57 classes, github.com/OASIS-Docs/publication-assurance) against the three
+# ACAL-family core specification packages already built from this branch's own
+# pandoc/mkdocs.sh pipeline and committed under pubcheck-pkg/ (csd02 candidate
+# packages: ACAL core, JACAL/JSON core, XACML/XML core).
+#
+# This is a fork-only exploration workflow (see pubcheck-pkg/README below in
+# repo history / activity log). It is NOT intended to run on, or be merged
+# into, oasis-tcs/xacml-spec.
+#
+# Any blocker fails the job; warnings do not.
+
+name: pub-check
+
+on:
+  push:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Stage directory or package .zip to check (overrides the matrix below when set)"
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  pub-check:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - name: acal-core-v1.0-csd02
+            target: pubcheck-pkg/acal/core/v1.0/csd02
+          - name: jacal-core-v1.0-csd02
+            target: pubcheck-pkg/jacal/core/v1.0/csd02
+          - name: xacml-core-v4.0-csd02
+            target: pubcheck-pkg/xacml/core/v4.0/csd02
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run oasis-pub-check (${{ matrix.package.name }})
+        uses: OASIS-Docs/publication-assurance@v1 # for production, pin to a full commit SHA
+        with:
+          target: ${{ github.event.inputs.target || matrix.package.target }}
+          args: --json
