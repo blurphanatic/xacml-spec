@@ -6,15 +6,14 @@
 # pandoc/mkdocs.sh pipeline and committed under pubcheck-pkg/ (csd02 candidate
 # packages: ACAL core, JACAL/JSON core, XACML/XML core).
 #
-# The gate result (job conclusion) still fails when a package carries a
-# blocker -- that is the gate doing its job. What changed vs the first cut:
-# the findings are no longer buried in raw step logs. Every run publishes a
-# GitHub Step Summary per package (verdict + full ordered findings list) and
-# uploads the txt/json reports as a downloadable artifact, so a TC member who
-# opens the run page sees the actual findings without touching logs.
-#
-# This is a fork-only exploration workflow. It is NOT intended to run on, or
-# be merged into, oasis-tcs/xacml-spec.
+# TEMPORARILY pointed at OASIS-Docs/publication-assurance's
+# feature/action-report-output branch (an open PR, not yet merged) instead of
+# the published v1 tag, to verify the action's new native report-dir /
+# write-summary / summary-title inputs end to end on a real run before that
+# PR merges. The workflow is now much shorter than the previous cut: the
+# action itself writes pubcheck-report.txt/.json and the GitHub Step Summary
+# section per package, this workflow only adds the upload-artifact step.
+# Revert the `uses:` ref back to `@v1` once the PR is tagged into a release.
 #
 # Any blocker fails the job; warnings do not.
 
@@ -52,52 +51,17 @@ jobs:
       - name: Checkout xacml-spec
         uses: actions/checkout@v4
 
-      - name: Checkout oasis-pub-check tool (OASIS-Docs/publication-assurance @ v1)
-        uses: actions/checkout@v4
+      - name: Run oasis-pub-check (${{ matrix.package.name }})
+        uses: OASIS-Docs/publication-assurance@feature/action-report-output
         with:
-          repository: OASIS-Docs/publication-assurance
-          # v1 tag, pinned to its commit at the time this workflow was written.
-          ref: 56e1678156d2d39002bc875b8bd5b6a5e832b19c
-          path: .pub-check-tool
-
-      - name: Run oasis-pub-check
-        id: pubcheck
-        continue-on-error: true
-        env:
-          TARGET: ${{ github.event.inputs.target || matrix.package.target }}
-        run: |
-          set +o errexit
-          python3 .pub-check-tool/pub-check/oasis_pub_check.py "$TARGET" | tee pubcheck-report.txt
-          text_exit="${PIPESTATUS[0]}"
-          python3 .pub-check-tool/pub-check/oasis_pub_check.py "$TARGET" --json > pubcheck-report.json
-          json_exit="$?"
-          echo "exit_code=${json_exit}" >> "$GITHUB_OUTPUT"
-          echo "(text-mode exit was ${text_exit}; json-mode exit ${json_exit} is authoritative)"
-
-      - name: Write step summary
-        if: always()
-        env:
-          PKG_NAME: ${{ matrix.package.name }}
-          PKG_ID: ${{ matrix.package.id }}
-          PKG_TARGET: ${{ github.event.inputs.target || matrix.package.target }}
-          REPORT_JSON: pubcheck-report.json
-          REPORT_TXT: pubcheck-report.txt
-        run: python3 .github/scripts/pubcheck_summary.py
+          target: ${{ github.event.inputs.target || matrix.package.target }}
+          report-dir: pubcheck-report-${{ matrix.package.id }}
+          summary-title: ${{ matrix.package.name }}
 
       - name: Upload pub-check report (${{ matrix.package.id }})
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: pubcheck-report-${{ matrix.package.id }}
-          path: |
-            pubcheck-report.txt
-            pubcheck-report.json
+          path: pubcheck-report-${{ matrix.package.id }}
           if-no-files-found: error
-
-      - name: Enforce gate result
-        if: always()
-        env:
-          EXIT_CODE: ${{ steps.pubcheck.outputs.exit_code }}
-        run: |
-          echo "oasis-pub-check exit code: ${EXIT_CODE}"
-          exit "${EXIT_CODE}"
