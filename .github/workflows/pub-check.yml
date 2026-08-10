@@ -60,8 +60,19 @@ jobs:
 
       - name: Upload pub-check report (${{ matrix.package.id }})
         if: always()
+        id: upload
         uses: actions/upload-artifact@v4
         with:
           name: pubcheck-report-${{ matrix.package.id }}
           path: pubcheck-report-${{ matrix.package.id }}
           if-no-files-found: error
+
+      - name: Note artifact location in summary
+        if: always() && steps.upload.outcome == 'success'
+        shell: bash
+        env:
+          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+          ARTIFACT_NAME: pubcheck-report-${{ matrix.package.id }}
+        run: |
+          echo "**Full report artifact:** [${ARTIFACT_NAME}](${ARTIFACT_URL}) (txt + json)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
