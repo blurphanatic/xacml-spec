@@ -6,9 +6,15 @@
 # pandoc/mkdocs.sh pipeline and committed under pubcheck-pkg/ (csd02 candidate
 # packages: ACAL core, JACAL/JSON core, XACML/XML core).
 #
-# This is a fork-only exploration workflow (see pubcheck-pkg/README below in
-# repo history / activity log). It is NOT intended to run on, or be merged
-# into, oasis-tcs/xacml-spec.
+# The gate result (job conclusion) still fails when a package carries a
+# blocker -- that is the gate doing its job. What changed vs the first cut:
+# the findings are no longer buried in raw step logs. Every run publishes a
+# GitHub Step Summary per package (verdict + full ordered findings list) and
+# uploads the txt/json reports as a downloadable artifact, so a TC member who
+# opens the run page sees the actual findings without touching logs.
+#
+# This is a fork-only exploration workflow. It is NOT intended to run on, or
+# be merged into, oasis-tcs/xacml-spec.
 #
 # Any blocker fails the job; warnings do not.
 
@@ -27,22 +33,71 @@ permissions:
 
 jobs:
   pub-check:
+    name: "pub-check / ${{ matrix.package.name }}"
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         package:
-          - name: acal-core-v1.0-csd02
+          - id: acal-core-v1.0
+            name: "ACAL core v1.0 csd02"
             target: pubcheck-pkg/acal/core/v1.0/csd02
-          - name: jacal-core-v1.0-csd02
+          - id: jacal-core-v1.0
+            name: "JACAL (JSON profile) core v1.0 csd02"
             target: pubcheck-pkg/jacal/core/v1.0/csd02
-          - name: xacml-core-v4.0-csd02
+          - id: xacml-core-v4.0
+            name: "XACML (XML profile) core v4.0 csd02"
             target: pubcheck-pkg/xacml/core/v4.0/csd02
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout xacml-spec
+        uses: actions/checkout@v4
 
-      - name: Run oasis-pub-check (${{ matrix.package.name }})
-        uses: OASIS-Docs/publication-assurance@v1 # for production, pin to a full commit SHA
+      - name: Checkout oasis-pub-check tool (OASIS-Docs/publication-assurance @ v1)
+        uses: actions/checkout@v4
         with:
-          target: ${{ github.event.inputs.target || matrix.package.target }}
-          args: --json
+          repository: OASIS-Docs/publication-assurance
+          # v1 tag, pinned to its commit at the time this workflow was written.
+          ref: 56e1678156d2d39002bc875b8bd5b6a5e832b19c
+          path: .pub-check-tool
+
+      - name: Run oasis-pub-check
+        id: pubcheck
+        continue-on-error: true
+        env:
+          TARGET: ${{ github.event.inputs.target || matrix.package.target }}
+        run: |
+          set +o errexit
+          python3 .pub-check-tool/pub-check/oasis_pub_check.py "$TARGET" | tee pubcheck-report.txt
+          text_exit="${PIPESTATUS[0]}"
+          python3 .pub-check-tool/pub-check/oasis_pub_check.py "$TARGET" --json > pubcheck-report.json
+          json_exit="$?"
+          echo "exit_code=${json_exit}" >> "$GITHUB_OUTPUT"
+          echo "(text-mode exit was ${text_exit}; json-mode exit ${json_exit} is authoritative)"
+
+      - name: Write step summary
+        if: always()
+        env:
+          PKG_NAME: ${{ matrix.package.name }}
+          PKG_ID: ${{ matrix.package.id }}
+          PKG_TARGET: ${{ github.event.inputs.target || matrix.package.target }}
+          REPORT_JSON: pubcheck-report.json
+          REPORT_TXT: pubcheck-report.txt
+        run: python3 .github/scripts/pubcheck_summary.py
+
+      - name: Upload pub-check report (${{ matrix.package.id }})
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pubcheck-report-${{ matrix.package.id }}
+          path: |
+            pubcheck-report.txt
+            pubcheck-report.json
+          if-no-files-found: error
+
+      - name: Enforce gate result
+        if: always()
+        env:
+          EXIT_CODE: ${{ steps.pubcheck.outputs.exit_code }}
+        run: |
+          echo "oasis-pub-check exit code: ${EXIT_CODE}"
+          exit "${EXIT_CODE}"
