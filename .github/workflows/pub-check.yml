@@ -6,7 +6,7 @@
 # pandoc/mkdocs.sh pipeline and committed under pubcheck-pkg/ (csd02 candidate
 # packages: ACAL core, JACAL/JSON core, XACML/XML core).
 #
-# TEMPORARILY pointed at OASIS-Docs/publication-assurance's
+# Pinned to the v1.1.6 release. (Previously pointed at OASIS-Docs/publication-assurance's
 # feature/action-report-output branch (an open PR, not yet merged) instead of
 # the published v1 tag, to verify the action's new native report-dir /
 # write-summary / summary-title inputs end to end on a real run before that
@@ -52,7 +52,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run oasis-pub-check (${{ matrix.package.name }})
-        uses: OASIS-Docs/publication-assurance@feature/action-report-output
+        uses: OASIS-Docs/publication-assurance@v1.1.6
         with:
           target: ${{ github.event.inputs.target || matrix.package.target }}
           report-dir: pubcheck-report-${{ matrix.package.id }}
